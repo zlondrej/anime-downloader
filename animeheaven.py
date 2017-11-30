@@ -137,7 +137,9 @@ def progress_bar(response):
     total_size = int(response.headers.get('content-length', 0))
 
     total_read = 0
-    with tqdm.tqdm(total=total_size, unit='B', unit_scale=True) as progress:
+    with tqdm.tqdm(
+            total=total_size, unit='B',
+            unit_scale=True, dynamic_ncols=True) as progress:
         for chunk in response.iter_content(2**16):
             progress.update(len(chunk))
             yield chunk
