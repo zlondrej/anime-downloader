@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import argparse
+import codecs
 import itertools
 import lxml.html
 import os
@@ -21,7 +22,7 @@ class AnimeHeaven:
     anime_url = 'http://animeheaven.eu/i.php'  # a=<anime name>
     search_url = 'http://animeheaven.eu/search.php'  # q=<search query>
     watch_url = 'http://animeheaven.eu/watch.php'  # a=<anime name>&e=<episode>
-    download_link_re = re.compile(r"<a class='an' href='(http[^']+)'>")
+    download_link_re = re.compile(r"<a class='an' href='((\\x\w{2})+)'>")
 
     @classmethod
     def search_anime(cls, search):
@@ -85,10 +86,12 @@ class AnimeHeaven:
         if download_link is None:
             raise LimitReachedError
 
+        (download_link, _) = codecs.escape_decode(download_link[1])
+
         return {
             'name': anime_name,
             'episode': int(episode),
-            'source': download_link[1],
+            'source': download_link.decode('ascii'),
         }
 
 
@@ -183,13 +186,13 @@ def download(anime, episode, dest_dir):
     except LimitReachedError:
         print("{}: Daily limit reached".format(log_entry))
         raise
-
-    except BaseException as e:
+    except KeyboardInterrupt:
         os.path.exists(dest_file) and os.remove(dest_file)
         print("{}: Download canceled".format(log_entry))
-
-        if not isinstance(e, Exception):  # Re-raise keyboard interrupt
-            raise
+        raise
+    except Exception:
+        os.path.exists(dest_file) and os.remove(dest_file)
+        raise
 
 
 def main():
