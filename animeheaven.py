@@ -198,16 +198,19 @@ def download(anime, episode, dest_dir):
 def main():
     argp = argparse.ArgumentParser()
 
-    argp.add_argument('anime', help='Anime to search/download')
+    argp.add_argument(
+        'anime', nargs='+',
+        help='anime to search/download, fuzzy names are allowed, '
+             'multiple arguments can be used instead of spaces')
     argp.add_argument(
         '-d', '--download', dest='download', action='store_true',
-        default=False, help='Download instead of search')
+        default=False, help='download instead of search')
     argp.add_argument(
         '-D', '--dir', dest='dest_dir', default='.', help='Download directory')
     argp.add_argument(
         '-e', '--episodes', dest='episodes',
         type=selection_type, default=All(),
-        help='Select episodes to download (e.g.: '
+        help='select episodes to download (e.g.: '
              '"1,2,7-9,11-22", "latest", "55-latest", '
              '"latest-5" for 5 latest episodes)')
 
@@ -221,7 +224,7 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
 
     try:
         if args.download:
-            anime = AnimeHeaven.get_info(args.anime)
+            anime = AnimeHeaven.get_info(' '.join(args.anime))
             if anime is None:
                 argp.exit(1, 'anime not found by given name\n')
             episodes = args.episodes(anime['episodes'])
