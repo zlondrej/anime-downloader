@@ -76,21 +76,61 @@ class AnimeHeaven:
         }
 
 
+class Range:
+    def __init__(self, low, high=None):
+        self.low = low
+        self.high = high
+
+    def __call__(self, episodes):
+        if self.high is None:
+            return [self.low]
+        else:
+            return range(self.low, self.high)
+
+
+class Latest:
+    def __init__(self, range):
+        self.range = range
+
+    def __call__(self, episodes):
+        if self.range < 0:
+            return range(max(1, episodes + self.range), episodes + 1)
+        elif self.range > 0:
+            return range(self.range, episodes + 1)
+        else:
+            return [episodes]
+
+
+class All:
+    def __call__(self, episodes):
+        return range(1, episodes + 1)
+
+
 def selection_type(value):
     def get_range(value):
         try:
             [low, high] = value.split('-')
-            return range(int(low), int(high) + 1)
+
+            if low == 'latest':
+                return Latest(-int(high))
+            elif high == 'latest':
+                return Latest(int(low))
+            else:
+                return Range(int(low), int(high) + 1)
         except ValueError:
-            return [int(value)]
-    return sorted(set(
-        itertools.chain.from_iterable(map(get_range, value.split(',')))))
+            if value == 'latest':
+                return Latest(0)
+            else:
+                return Range(int(value))
 
+    ranges = list(map(get_range, value.split(',')))
 
-def less_than_eq(high):
-    def fn(other):
-        return other <= high
-    return fn
+    def with_episode_count(episodes):
+        return sorted(set(itertools.chain.from_iterable(
+            [r(episodes) for r in ranges]
+        )))
+
+    return with_episode_count
 
 
 def progress_bar(response):
@@ -145,8 +185,10 @@ def main():
         '-D', '--dir', dest='dest_dir', default='.', help='Download directory')
     argp.add_argument(
         '-e', '--episodes', dest='episodes',
-        type=selection_type, default=itertools.count(1),
-        help='Select episodes to download (e.g.: 1,2,7-9,11-22)')
+        type=selection_type, default=All(),
+        help='Select episodes to download (e.g.: '
+             '"1,2,7-9,11-22", "latest", "55-latest", '
+             '"latest-5" for 5 latest episodes)')
 
     argp.epilog = """
 AnimeHeaven.eu has relatively low daily request limit.
