@@ -31,8 +31,7 @@ class AnimeHeaven:
 
             return {
                 'episodes': int(episode_count),
-                'anime_name': anime_name,
-                # 'anime_link': anime_link,
+                'name': anime_name,
             }
 
         response = requests.get(cls.search_url, params={'q': search})
@@ -43,7 +42,24 @@ class AnimeHeaven:
             lxml.html.fromstring(response.text).cssselect('.iepcon'))
 
     @classmethod
-    def get_info(cls, anime_name):
+    def get_info(cls, anime_name, fuzzy=True):
+        if fuzzy:
+            return cls._get_info_fuzzy(anime_name)
+        else:
+            return cls._get_info_strict(anime_name)
+
+    @classmethod
+    def _get_info_fuzzy(cls, anime_name):
+        animes = list(cls.search_anime(anime_name))
+        if len(animes) == 1:
+            return animes[0]
+        else:
+            for anime in animes:
+                if anime['name'].lower() == anime_name.lower():
+                    return anime
+
+    @classmethod
+    def _get_info_strict(cls, anime_name):
         response = requests.get(cls.anime_url, params={'a': anime_name})
         response.raise_for_status()
 
@@ -52,7 +68,7 @@ class AnimeHeaven:
         )[0].getnext().text
 
         return {
-            'anime': anime_name,
+            'name': anime_name,
             'episodes': int(episodes),
         }
 
@@ -70,7 +86,7 @@ class AnimeHeaven:
             raise LimitReachedError
 
         return {
-            'anime': anime_name,
+            'name': anime_name,
             'episode': int(episode),
             'source': download_link[1],
         }
@@ -202,20 +218,23 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
 
     try:
         if args.download:
-            info = AnimeHeaven.get_info(args.anime)
-            episodes = itertools.takewhile(
-                less_than_eq(info['episodes']), args.episodes)
+            anime = AnimeHeaven.get_info(args.anime)
+            if anime is None:
+                argp.exit(1, 'anime not found by given name\n')
+            episodes = args.episodes(anime['episodes'])
             for episode in episodes:
-                download(args.anime, episode, args.dest_dir)
+                download(anime['name'], episode, args.dest_dir)
         else:
             animes = AnimeHeaven.search_anime(args.anime)
             for anime in animes:
                 print("{}\n  - Episodes: {}".format(
-                    anime['anime_name'],
+                    anime['name'],
                     anime['episodes']
                 ))
-    except BaseException:
-        sys.exit(1)
+    except KeyboardInterrupt:
+        pass
+    except LimitReachedError:
+        pass
 
 
 if __name__ == "__main__":
