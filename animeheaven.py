@@ -13,7 +13,15 @@ import sys
 import tqdm
 
 
-class LimitReachedError(Exception):
+class AnimeError(Exception):
+    pass
+
+
+class LimitReachedError(AnimeError):
+    pass
+
+
+class UpdateNecessaryError(AnimeError):
     pass
 
 
@@ -22,7 +30,8 @@ class AnimeHeaven:
     anime_url = 'http://animeheaven.eu/i.php'  # a=<anime name>
     search_url = 'http://animeheaven.eu/search.php'  # q=<search query>
     watch_url = 'http://animeheaven.eu/watch.php'  # a=<anime name>&e=<episode>
-    download_link_re = re.compile(r"<a class='an' href='((\\x\w{2})+)'>")
+    download_link_re = re.compile(r"<a +class='an' +href='((\\x\w{2})+)'>")
+    download_limit_re = re.compile(r"limit exceeded")
 
     @classmethod
     def search_anime(cls, search):
@@ -81,10 +90,14 @@ class AnimeHeaven:
         }
         response = requests.get(cls.watch_url, params=params)
         response.raise_for_status()
+
+        if cls.download_limit_re.search(response.text):
+            raise LimitReachedError
+
         download_link = cls.download_link_re.search(response.text)
 
         if download_link is None:
-            raise LimitReachedError
+            raise UpdateNecessaryError
 
         (download_link, _) = codecs.escape_decode(download_link[1])
 
@@ -183,8 +196,7 @@ def download(anime, episode, dest_dir):
             for chunk in progress_bar(response):
                 output.write(chunk)
 
-    except LimitReachedError:
-        print("{}: Daily limit reached".format(log_entry))
+    except AnimeError:
         raise
     except KeyboardInterrupt:
         os.path.exists(dest_file) and os.remove(dest_file)
@@ -237,9 +249,12 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
                     anime['name'],
                     anime['episodes']
                 ))
-    except KeyboardInterrupt:
-        pass
+
+    except UpdateNecessaryError:
+        argp.exit(3, "Script update may be neccessary\n")
     except LimitReachedError:
+        argp.exit(2, "Daily limit reached\n")
+    except KeyboardInterrupt:
         pass
 
 
