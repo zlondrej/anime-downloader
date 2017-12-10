@@ -3,6 +3,7 @@
 import argparse
 import codecs
 import itertools
+import json
 import lxml.html
 import os
 import os.path
@@ -183,7 +184,7 @@ def download(anime, episode, dest_dir):
     dest_file = os.path.join(dest_dir, filename)
 
     if os.path.exists(dest_file):
-        print("{}: Already downloaded".format(log_entry))
+        # print("{}: Already downloaded".format(log_entry))
         return
 
     print("{}: Downloading".format(log_entry))
@@ -211,20 +212,23 @@ def main():
     argp = argparse.ArgumentParser()
 
     argp.add_argument(
-        'anime', nargs='+',
+        'anime', nargs='*',
         help='anime to search/download, fuzzy names are allowed, '
              'multiple arguments can be used instead of spaces')
     argp.add_argument(
         '-d', '--download', dest='download', action='store_true',
         default=False, help='download instead of search')
     argp.add_argument(
-        '-D', '--dir', dest='dest_dir', default='.', help='Download directory')
+        '-D', '--dir', dest='dest_dir', default='.', help='download directory')
     argp.add_argument(
         '-e', '--episodes', dest='episodes',
         type=selection_type, default=All(),
         help='select episodes to download (e.g.: '
              '"1,2,7-9,11-22", "latest", "55-latest", '
              '"latest-5" for 5 latest episodes)')
+
+    argp.add_argument(
+        '-c', '--config', dest='config', help='download specification file')
 
     argp.epilog = """
 AnimeHeaven.eu has relatively low daily request limit.
@@ -235,13 +239,33 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
     args = argp.parse_args()
 
     try:
+        if args.config:
+            if not os.path.exists(args.config):
+                argp.error(
+                    'Specification file "{}" does not exist.'.format(
+                        args.config))
+            args.download = True
+            with open(args.config) as spec_file:
+                specs = json.load(spec_file)
+            assert isinstance(specs, list)
+            anime_specs = []
+            for anime in specs:
+                episodes = anime.get('episodes')
+                episodes = selection_type(episodes) if episodes else All()
+                dest_dir = os.path.expandvars(anime['dest_dir'])
+                anime_specs.append((anime['name'], dest_dir, episodes))
+        else:
+            anime_specs = [
+                (' '.join(args.anime), args.dest_dir, args.episodes)]
+
         if args.download:
-            anime = AnimeHeaven.get_info(' '.join(args.anime))
-            if anime is None:
-                argp.exit(1, 'anime not found by given name\n')
-            episodes = args.episodes(anime['episodes'])
-            for episode in episodes:
-                download(anime['name'], episode, args.dest_dir)
+            for (anime_name, dest_dir, episodes) in anime_specs:
+                anime = AnimeHeaven.get_info(anime_name)
+                if anime is None:
+                    argp.exit(1, 'anime not found by given name\n')
+                episodes = episodes(anime['episodes'])
+                for episode in episodes:
+                    download(anime['name'], episode, dest_dir)
         else:
             animes = AnimeHeaven.search_anime(args.anime)
             for anime in animes:
