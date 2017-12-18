@@ -2,6 +2,7 @@
 
 import argparse
 import codecs
+import filelock
 import itertools
 import json
 import lxml.html
@@ -10,6 +11,7 @@ import os.path
 import re
 import requests
 import shutil
+import signal
 import sys
 import tqdm
 
@@ -182,30 +184,35 @@ def download(anime, episode, dest_dir):
     log_entry = "{} - {:03d}".format(anime, episode)
     filename = "{} - {:03d}.mp4".format(anime, episode)
     dest_file = os.path.join(dest_dir, filename)
+    temp_file = os.path.join(dest_dir, '.{}~'.format(filename))
+    temp_lock = filelock.FileLock(temp_file, timeout=0)
 
     if os.path.exists(dest_file):
-        # print("{}: Already downloaded".format(log_entry))
         return
-
-    print("{}: Downloading".format(log_entry))
+    elif os.path.exists(temp_file) and temp_lock.is_locked:
+        return
 
     try:
         info = AnimeHeaven.get_episode(anime, episode)
 
-        with open(dest_file, 'wb') as output:
+        with temp_lock, open(temp_file, 'wb') as output:
+            print("{}: Downloading".format(log_entry))
             response = requests.get(info['source'], stream=True)
             for chunk in progress_bar(response):
                 output.write(chunk)
 
-    except AnimeError:
-        raise
-    except KeyboardInterrupt:
-        os.path.exists(dest_file) and os.remove(dest_file)
+        shutil.move(temp_file, dest_file)
+
+    except filelock.Timeout:
+        pass
+    except (Exception, KeyboardInterrupt):
         print("{}: Download canceled".format(log_entry))
+        os.path.exists(temp_file) and os.remove(temp_file)
         raise
-    except Exception:
-        os.path.exists(dest_file) and os.remove(dest_file)
-        raise
+
+
+def raise_signal(signal, frame):
+    raise KeyboardInterrupt
 
 
 def main():
@@ -237,6 +244,7 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
 """
 
     args = argp.parse_args()
+    signal.signal(signal.SIGTERM, raise_signal)
 
     try:
         if args.config:
