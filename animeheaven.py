@@ -168,12 +168,12 @@ def selection_type(value):
     return with_episode_count
 
 
-def progress_bar(response):
-    total_size = int(response.headers.get('content-length', 0))
+def progress_bar(response, initial=0):
+    total_size = int(response.headers.get('content-length', 0)) + initial
 
     total_read = 0
     with tqdm.tqdm(
-            total=total_size, unit='B',
+            total=total_size, initial=initial, unit='B',
             unit_scale=True, dynamic_ncols=True) as progress:
         for chunk in response.iter_content(2**16):
             progress.update(len(chunk))
@@ -184,31 +184,50 @@ def download(anime, episode, dest_dir):
     log_entry = "{} - {:03d}".format(anime, episode)
     filename = "{} - {:03d}.mp4".format(anime, episode)
     dest_file = os.path.join(dest_dir, filename)
-    temp_file = os.path.join(dest_dir, '.{}~'.format(filename))
-    temp_lock = filelock.FileLock(temp_file, timeout=0)
+    temp_file = os.path.join(dest_dir, '~{}'.format(filename))
+    temp_lock = filelock.FileLock(f'{temp_file}.lock', timeout=0)
 
     if os.path.exists(dest_file):
         return
     elif os.path.exists(temp_file) and temp_lock.is_locked:
         return
 
+    remove_lock = True
+
     try:
         info = AnimeHeaven.get_episode(anime, episode)
 
-        with temp_lock, open(temp_file, 'wb') as output:
-            print("{}: Downloading".format(log_entry))
-            response = requests.get(info['source'], stream=True)
-            for chunk in progress_bar(response):
+        headers = {}
+        fsize = 0
+        if os.path.exists(temp_file):
+            fsize = os.stat(temp_file).st_size
+            headers['Range'] = f'bytes={fsize}-'
+
+        response = requests.get(info['source'], stream=True, headers=headers)
+        response.raise_for_status()
+
+        mode = 'ab' if response.status_code == 206 else 'wb'
+
+        with temp_lock, open(temp_file, mode) as output:
+            if response.status_code == 206:
+                print("{}: Resuming".format(log_entry))
+            else:
+                print("{}: Downloading".format(log_entry))
+                fsize = 0
+            for chunk in progress_bar(response, fsize):
                 output.write(chunk)
 
         shutil.move(temp_file, dest_file)
 
     except filelock.Timeout:
-        pass
-    except (Exception, KeyboardInterrupt):
+        remove_lock = False
+    except KeyboardInterrupt:
         print("{}: Download canceled".format(log_entry))
-        os.path.exists(temp_file) and os.remove(temp_file)
+        # Keep the file to be able to resume.
         raise
+    finally:
+        if remove_lock and os.path.exists(temp_lock.lock_file):
+            os.remove(temp_lock.lock_file)
 
 
 def raise_signal(signal, frame):
