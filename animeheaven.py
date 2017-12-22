@@ -33,7 +33,7 @@ class AnimeHeaven:
     anime_url = 'http://animeheaven.eu/i.php'  # a=<anime name>
     search_url = 'http://animeheaven.eu/search.php'  # q=<search query>
     watch_url = 'http://animeheaven.eu/watch.php'  # a=<anime name>&e=<episode>
-    download_link_re = re.compile(r"<a +class='an' +href='((\\x\w{2})+)'>")
+    download_link_re = re.compile(r"var pli=\"((\\x\w{2})+)\"")
     download_limit_re = re.compile(r"limit exceeded")
 
     @classmethod
