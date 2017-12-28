@@ -33,8 +33,11 @@ class AnimeHeaven:
     anime_url = 'http://animeheaven.eu/i.php'  # a=<anime name>
     search_url = 'http://animeheaven.eu/search.php'  # q=<search query>
     watch_url = 'http://animeheaven.eu/watch.php'  # a=<anime name>&e=<episode>
-    download_link_re = re.compile(r"var pli=\"((\\x\w{2})+)\"")
+    download_link_re = re.compile(r"var pli=rrl\(\"([^\"]+)\"\);")
     download_limit_re = re.compile(r"limit exceeded")
+    link_substitions = dict(zip(
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+        'NOPQRSTUVWXYZABCDEFGHIJKLMnopqrstuvwxyzabcdefghijklm'))
 
     @classmethod
     def search_anime(cls, search):
@@ -97,18 +100,28 @@ class AnimeHeaven:
         if cls.download_limit_re.search(response.text):
             raise LimitReachedError
 
-        download_link = cls.download_link_re.search(response.text)
+        download_link = cls.get_download_link(response)
 
         if download_link is None:
             raise UpdateNecessaryError
 
-        (download_link, _) = codecs.escape_decode(download_link[1])
-
         return {
             'name': anime_name,
             'episode': int(episode),
-            'source': download_link.decode('ascii'),
+            'source': download_link,
         }
+
+    @classmethod
+    def get_download_link(cls, response):
+        encrypted_link = cls.download_link_re.search(response.text)
+
+        if encrypted_link is None:
+            return None
+
+        def replace_chars(c):
+            return cls.link_substitions.get(c, c)
+
+        return ''.join(list(map(replace_chars, encrypted_link[1])))
 
 
 class Range:
