@@ -193,9 +193,10 @@ def progress_bar(response, initial=0):
             yield chunk
 
 
-def download(anime, episode, dest_dir):
+def download(anime, episode, naming_scheme, dest_dir):
     log_entry = "{} - {:03d}".format(anime, episode)
-    filename = "{} - {:03d}.mp4".format(anime, episode)
+    basename = naming_scheme.format(name=anime, episode=episode)
+    filename = "{}.mp4".format(basename)
     dest_file = os.path.join(dest_dir, filename)
     temp_file = os.path.join(dest_dir, '~{}'.format(filename))
     temp_lock = filelock.FileLock(f'{temp_file}.lock', timeout=0)
@@ -260,6 +261,13 @@ def main():
     argp.add_argument(
         '-D', '--dir', dest='dest_dir', default='.', help='download directory')
     argp.add_argument(
+        '-n', '--naming-scheme', dest='naming_scheme',
+        default='{name} - {episode:03d}',
+        help='Pattern for filenames. Usable variables are {name} (string) and '
+        '{episode} (integer). Follows python\'s format string syntax. '
+        '(https://docs.python.org/3/library/string.html#formatstrings) '
+        '(default: "%(default)s")')
+    argp.add_argument(
         '-e', '--episodes', dest='episodes',
         type=selection_type, default=All(),
         help='select episodes to download (e.g.: '
@@ -293,19 +301,25 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
                 episodes = anime.get('episodes')
                 episodes = selection_type(episodes) if episodes else All()
                 dest_dir = os.path.expandvars(anime['dest_dir'])
-                anime_specs.append((anime['name'], dest_dir, episodes))
+                naming_scheme = anime.get('naming_scheme', args.naming_scheme)
+                anime_specs.append(
+                    (anime['name'], dest_dir, naming_scheme, episodes))
         else:
-            anime_specs = [
-                (' '.join(args.anime), args.dest_dir, args.episodes)]
+            anime_specs = [(
+                ' '.join(args.anime),
+                args.dest_dir,
+                args.naming_scheme,
+                args.episodes)]
 
         if args.download:
-            for (anime_name, dest_dir, episodes) in anime_specs:
+            for (anime_name, dest_dir, naming_scheme, episodes) in anime_specs:
                 anime = AnimeHeaven.get_info(anime_name)
                 if anime is None:
                     argp.exit(1, 'anime not found by given name\n')
                 episodes = episodes(anime['episodes'])
                 for episode in episodes:
-                    download(anime['name'], episode, dest_dir)
+                    download(
+                        anime['name'], episode, naming_scheme, dest_dir)
         else:
             animes = AnimeHeaven.search_anime(args.anime)
             for anime in animes:
