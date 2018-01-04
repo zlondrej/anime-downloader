@@ -42,7 +42,8 @@ class AnimeHeaven:
     @classmethod
     def search_anime(cls, search):
         def parse_info(element):
-            episode_count = element.cssselect('.iepst2, .iepst2r')[0].text
+            episode_count = element\
+                .cssselect('.iepst2, .iepst2r')[0].text_content()
             anime_name = element.cssselect('.cona')[0].text
 
             return {
