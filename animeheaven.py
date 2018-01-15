@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import argparse
-import codecs
+import base64
 import filelock
 import itertools
 import json
@@ -36,7 +36,7 @@ class AnimeHeaven:
     download_link_re = re.compile(r"var plo=\"([^\"]+)\";")
     download_limit_re = re.compile(r"limit exceeded")
     link_substitions = dict(zip(
-        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz*',
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz|',
         'NOPQRSTUVWXYZABCDEFGHIJKLMnopqrstuvwxyzabcdefghijklm9'))
 
     @classmethod
@@ -119,10 +119,13 @@ class AnimeHeaven:
         if encrypted_link is None:
             return None
 
-        def replace_chars(c):
-            return cls.link_substitions.get(c, c)
+        encrypted_b64_link = base64.b64decode(
+            encrypted_link[1].replace('|', '9')).decode('utf-8')
 
-        return ''.join(list(map(replace_chars, encrypted_link[1])))
+        def subst_chars(s, sub):
+            return ''.join(list(map(lambda c: sub.get(c, c), s)))
+
+        return subst_chars(encrypted_b64_link, cls.link_substitions)
 
 
 class Range:
