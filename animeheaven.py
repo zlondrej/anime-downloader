@@ -8,6 +8,7 @@ import json
 import lxml.html
 import os
 import os.path
+import pathlib
 import re
 import requests
 import shutil
@@ -201,13 +202,16 @@ def download(anime, episode, naming_scheme, dest_dir):
     log_entry = "{} - {:03d}".format(anime, episode)
     basename = naming_scheme.format(name=anime, episode=episode)
     filename = "{}.mp4".format(basename)
-    dest_file = os.path.join(dest_dir, filename)
-    temp_file = os.path.join(dest_dir, '~{}'.format(filename))
+
+    dest_dir.mkdir(exist_ok=True)
+
+    dest_file = dest_dir / filename
+    temp_file = dest_dir / '~{}'.format(filename)
     temp_lock = filelock.FileLock(f'{temp_file}.lock', timeout=0)
 
-    if os.path.exists(dest_file):
+    if dest_file.exists():
         return
-    elif os.path.exists(temp_file) and temp_lock.is_locked:
+    elif temp_file.exists() and temp_lock.is_locked:
         return
 
     remove_lock = True
@@ -217,8 +221,8 @@ def download(anime, episode, naming_scheme, dest_dir):
 
         headers = {}
         fsize = 0
-        if os.path.exists(temp_file):
-            fsize = os.stat(temp_file).st_size
+        if temp_file.exists():
+            fsize = temp_file.stat().st_size
             headers['Range'] = f'bytes={fsize}-'
 
         response = requests.get(info['source'], stream=True, headers=headers)
@@ -323,7 +327,8 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
                 episodes = episodes(anime['episodes'])
                 for episode in episodes:
                     download(
-                        anime['name'], episode, naming_scheme, dest_dir)
+                        anime['name'], episode, naming_scheme,
+                        pathlib.Path(dest_dir))
         else:
             animes = AnimeHeaven.search_anime(args.anime)
             for anime in animes:
