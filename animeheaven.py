@@ -34,8 +34,9 @@ class AnimeHeaven:
     anime_url = 'http://animeheaven.eu/i.php'  # a=<anime name>
     search_url = 'http://animeheaven.eu/search.php'  # q=<search query>
     watch_url = 'http://animeheaven.eu/watch.php'  # a=<anime name>&e=<episode>
-    download_link_re = re.compile(r"var plo=\"([^\"]+)\";")
-    download_limit_re = re.compile(r"limit exceeded")
+    download_link_re = re.compile(r'var plo="([^\"]+)";')
+    download_link_sub_re = re.compile(r'plo=plo\.replace\(/\\?(.)/g,"(.)"\);')
+    download_limit_re = re.compile(r'limit exceeded')
     link_substitions = dict(zip(
         'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz|',
         'NOPQRSTUVWXYZABCDEFGHIJKLMnopqrstuvwxyzabcdefghijklm9'))
@@ -120,8 +121,14 @@ class AnimeHeaven:
         if encrypted_link is None:
             return None
 
+        subst_chars = cls.download_link_sub_re.search(response.text)
+
+        if subst_chars is None:
+            return None
+
         encrypted_b64_link = base64.b64decode(
-            encrypted_link[1].replace('|', '9')).decode('utf-8')
+            encrypted_link[1].replace(
+                subst_chars[1], subst_chars[2])).decode('utf-8')
 
         def subst_chars(s, sub):
             return ''.join(list(map(lambda c: sub.get(c, c), s)))
