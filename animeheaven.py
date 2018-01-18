@@ -308,7 +308,8 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
             for anime in specs:
                 episodes = anime.get('episodes')
                 episodes = selection_type(episodes) if episodes else All()
-                dest_dir = os.path.expandvars(anime['dest_dir'])
+                dest_dir = os.path.expanduser(
+                    os.path.expandvars(anime['dest_dir']))
                 naming_scheme = anime.get('naming_scheme', args.naming_scheme)
                 anime_specs.append(
                     (anime['name'], dest_dir, naming_scheme, episodes))
