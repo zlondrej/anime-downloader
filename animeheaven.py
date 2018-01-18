@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import enum
 import filelock
 import itertools
 import json
@@ -27,6 +28,15 @@ class LimitReachedError(AnimeError):
 
 class UpdateNecessaryError(AnimeError):
     pass
+
+
+class DownloadState(enum.Enum):
+    ASSIGNED_OR_DONE = enum.auto()
+    DOWNLOADED = enum.auto()
+    FAILED = enum.auto()
+
+    def ok(self):
+        return self is not self.FAILED
 
 
 class AnimeHeaven:
@@ -217,7 +227,7 @@ def download(anime, episode, naming_scheme, dest_dir):
     temp_lock = filelock.FileLock(f'{temp_file}.lock', timeout=0)
 
     if dest_file.exists() or temp_lock.is_locked:
-        return
+        return DownloadState.ASSIGNED_OR_DONE
 
     remove_lock = True
 
@@ -247,6 +257,7 @@ def download(anime, episode, naming_scheme, dest_dir):
 
             shutil.move(temp_file, dest_file)
 
+            return DownloadState.DOWNLOADED
     except filelock.Timeout:
         remove_lock = False
     except KeyboardInterrupt:
@@ -256,6 +267,8 @@ def download(anime, episode, naming_scheme, dest_dir):
     finally:
         if remove_lock and os.path.exists(temp_lock.lock_file):
             os.remove(temp_lock.lock_file)
+
+    return DownloadState.FAILED
 
 
 def raise_signal(signal, frame):
@@ -331,11 +344,21 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
                 anime = AnimeHeaven.get_info(anime_name)
                 if anime is None:
                     argp.exit(1, 'anime not found by given name\n')
-                episodes = episodes(anime['episodes'])
-                for episode in episodes:
-                    download(
-                        anime['name'], episode, naming_scheme,
-                        pathlib.Path(dest_dir))
+                episodes = list(episodes(anime['episodes']))
+
+                got_all = False
+                while not got_all:
+                    # Always try to download oldest episodes first
+                    for episode in episodes:
+                        state = download(
+                            anime['name'], episode, naming_scheme,
+                            pathlib.Path(dest_dir))
+
+                        if episode == episodes[-1]:
+                            got_all = state.ok()
+
+                        if state is DownloadState.DOWNLOADED:
+                            break
         else:
             animes = AnimeHeaven.search_anime(args.anime)
             for anime in animes:
