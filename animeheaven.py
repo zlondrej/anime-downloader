@@ -216,37 +216,36 @@ def download(anime, episode, naming_scheme, dest_dir):
     temp_file = dest_dir / '~{}'.format(filename)
     temp_lock = filelock.FileLock(f'{temp_file}.lock', timeout=0)
 
-    if dest_file.exists():
-        return
-    elif temp_file.exists() and temp_lock.is_locked:
+    if dest_file.exists() or temp_lock.is_locked:
         return
 
     remove_lock = True
 
     try:
-        info = AnimeHeaven.get_episode(anime, episode)
+        with temp_lock:
+            info = AnimeHeaven.get_episode(anime, episode)
 
-        headers = {}
-        fsize = 0
-        if temp_file.exists():
-            fsize = temp_file.stat().st_size
-            headers['Range'] = f'bytes={fsize}-'
+            headers = {}
+            fsize = 0
+            if temp_file.exists():
+                fsize = temp_file.stat().st_size
+                headers['Range'] = f'bytes={fsize}-'
 
-        response = requests.get(info['source'], stream=True, headers=headers)
-        response.raise_for_status()
+            response = requests.get(info['source'], stream=True, headers=headers)
+            response.raise_for_status()
 
-        mode = 'ab' if response.status_code == 206 else 'wb'
+            mode = 'ab' if response.status_code == 206 else 'wb'
 
-        with temp_lock, open(temp_file, mode) as output:
-            if response.status_code == 206:
-                print("{}: Resuming".format(log_entry))
-            else:
-                print("{}: Downloading".format(log_entry))
-                fsize = 0
-            for chunk in progress_bar(response, fsize):
-                output.write(chunk)
+            with open(temp_file, mode) as output:
+                if response.status_code == 206:
+                    print("{}: Resuming".format(log_entry))
+                else:
+                    print("{}: Downloading".format(log_entry))
+                    fsize = 0
+                for chunk in progress_bar(response, fsize):
+                    output.write(chunk)
 
-        shutil.move(temp_file, dest_file)
+            shutil.move(temp_file, dest_file)
 
     except filelock.Timeout:
         remove_lock = False
