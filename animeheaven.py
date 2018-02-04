@@ -18,6 +18,12 @@ import sys
 import tqdm
 
 
+session = requests.Session()
+headers = {
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:57.0) Gecko/20100101 Firefox/57.0'
+}
+
+
 class AnimeError(Exception):
     pass
 
@@ -46,10 +52,10 @@ class AnimeHeaven:
     watch_url = 'http://animeheaven.eu/watch.php'  # a=<anime name>&e=<episode>
     download_link_re = re.compile(r'var plo="([^\"]+)";')
     download_link_sub_re = re.compile(r'plo=plo\.replace\(/\\?(.)/g,"(.)"\);')
-    download_limit_re = re.compile(r'limit exceeded')
+    download_limit_re = re.compile(r'abuse protection')
     link_substitions = dict(zip(
-        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz|',
-        'NOPQRSTUVWXYZABCDEFGHIJKLMnopqrstuvwxyzabcdefghijklm9'))
+        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+        'NOPQRSTUVWXYZABCDEFGHIJKLMnopqrstuvwxyzabcdefghijklm'))
 
     @classmethod
     def search_anime(cls, search):
@@ -63,7 +69,7 @@ class AnimeHeaven:
                 'name': anime_name,
             }
 
-        response = requests.get(cls.search_url, params={'q': search})
+        response = session.get(cls.search_url, params={'q': search}, headers=headers)
         response.raise_for_status()
 
         return map(
@@ -89,7 +95,7 @@ class AnimeHeaven:
 
     @classmethod
     def _get_info_strict(cls, anime_name):
-        response = requests.get(cls.anime_url, params={'a': anime_name})
+        response = session.get(cls.anime_url, params={'a': anime_name}, headers=headers)
         response.raise_for_status()
 
         episodes = lxml.html.fromstring(response.text).xpath(
@@ -107,7 +113,11 @@ class AnimeHeaven:
             'a': anime_name,
             'e': episode,
         }
-        response = requests.get(cls.watch_url, params=params)
+        response = session.get(cls.watch_url, params=params, cookies={
+            'popfired': '2',
+            '_popfired': '1',
+            'pp': 'c'
+        })
         response.raise_for_status()
 
         if cls.download_limit_re.search(response.text):
@@ -136,14 +146,11 @@ class AnimeHeaven:
         if subst_chars is None:
             return None
 
-        encrypted_b64_link = base64.b64decode(
+        decrypted = base64.b64decode(
             encrypted_link[1].replace(
                 subst_chars[1], subst_chars[2])).decode('utf-8')
 
-        def subst_chars(s, sub):
-            return ''.join(list(map(lambda c: sub.get(c, c), s)))
-
-        return subst_chars(encrypted_b64_link, cls.link_substitions)
+        return decrypted
 
 
 class Range:
@@ -241,7 +248,7 @@ def download(anime, episode, naming_scheme, dest_dir):
                 fsize = temp_file.stat().st_size
                 headers['Range'] = f'bytes={fsize}-'
 
-            response = requests.get(info['source'], stream=True, headers=headers)
+            response = session.get(info['source'], stream=True, headers=headers)
             response.raise_for_status()
 
             mode = 'ab' if response.status_code == 206 else 'wb'
