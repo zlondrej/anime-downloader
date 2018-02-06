@@ -146,11 +146,13 @@ class AnimeHeaven:
         if subst_chars is None:
             return None
 
-        decrypted = base64.b64decode(
+        decoded = base64.b64decode(
             encrypted_link[1].replace(
                 subst_chars[1], subst_chars[2])).decode('utf-8')
+        def subst_chars(s, sub):
+            return ''.join(list(map(lambda c: sub.get(c, c), s)))
 
-        return decrypted
+        return subst_chars(decoded, cls.link_substitions)
 
 
 class Range:
