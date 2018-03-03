@@ -299,7 +299,7 @@ def main():
     argp.add_argument(
         '-n', '--naming-scheme', dest='naming_scheme',
         default='{name} - {episode:03d}',
-        help='Pattern for filenames. Usable variables are {name} (string) and '
+        help='pattern for filenames; Usable variables are {name} (string) and '
         '{episode} (integer). Follows python\'s format string syntax. '
         '(https://docs.python.org/3/library/string.html#formatstrings) '
         '(default: "%(default)s")')
@@ -311,7 +311,11 @@ def main():
              '"latest-5" for 5 latest episodes)')
 
     argp.add_argument(
-        '-c', '--config', dest='config', help='download specification file')
+        '-c', '--config', dest='config',
+        help='download specification file; JSON document contaning list of '
+        'animes to download. Single anime entry is object that contains "name" '
+        'property with name of anime. More properties are supported and their '
+        'correspond with this programs\' options.')
 
     argp.epilog = """
 AnimeHeaven.eu has relatively low daily request limit.
