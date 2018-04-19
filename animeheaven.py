@@ -28,7 +28,7 @@ class AnimeError(Exception):
     pass
 
 
-class LimitReachedError(AnimeError):
+class AbuseProtection(AnimeError):
     pass
 
 
@@ -121,7 +121,7 @@ class AnimeHeaven:
         response.raise_for_status()
 
         if cls.download_limit_re.search(response.text):
-            raise LimitReachedError
+            raise AbuseProtection
 
         download_link = cls.get_download_link(response)
 
@@ -382,8 +382,10 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
 
     except UpdateNecessaryError:
         argp.exit(3, "Script update may be neccessary\n")
-    except LimitReachedError:
-        argp.exit(2, "Daily limit reached\n")
+    except AbuseProtection:
+        argp.exit(2,
+            'You have triggered abuse protection. '
+            'Wait 60 seconds before continuing.\n')
     except KeyboardInterrupt:
         pass
 
