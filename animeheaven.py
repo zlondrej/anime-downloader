@@ -152,7 +152,7 @@ class AnimeHeaven:
         def subst_chars(s, sub):
             return ''.join(list(map(lambda c: sub.get(c, c), s)))
 
-        return subst_chars(decoded, cls.link_substitions)
+        return decoded
 
 
 class Range:
