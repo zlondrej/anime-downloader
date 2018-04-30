@@ -2,6 +2,7 @@
 
 import argparse
 import base64
+import codecs
 import enum
 import filelock
 import itertools
@@ -53,9 +54,6 @@ class AnimeHeaven:
     download_link_re = re.compile(r'var plo="([^\"]+)";')
     download_link_sub_re = re.compile(r'plo=plo\.replace\(/\\?(.)/g,"(.)"\);')
     download_limit_re = re.compile(r'abuse protection')
-    link_substitions = dict(zip(
-        'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
-        'NOPQRSTUVWXYZABCDEFGHIJKLMnopqrstuvwxyzabcdefghijklm'))
 
     @classmethod
     def search_anime(cls, search):
@@ -123,7 +121,7 @@ class AnimeHeaven:
         if cls.download_limit_re.search(response.text):
             raise AbuseProtection
 
-        download_link = cls.get_download_link(response)
+        download_link = cls.get_download_link(response.text)
 
         if download_link is None:
             raise UpdateNecessaryError
@@ -135,22 +133,40 @@ class AnimeHeaven:
         }
 
     @classmethod
-    def get_download_link(cls, response):
-        encrypted_link = cls.download_link_re.search(response.text)
+    def get_download_link(cls, page_content, debug=False):
+        escaped_link = cls.download_link_re.search(page_content)
 
-        if encrypted_link is None:
+        if escaped_link is None:
             return None
 
-        subst_chars = cls.download_link_sub_re.search(response.text)
+        if debug:
+            print('escaped link:              "{}"'.format(escaped_link[1]))
+
+        encrypted_link = (
+            codecs.escape_decode(escaped_link[1])[0].decode('ascii'))
+
+        if debug:
+            print('encrypted link:            "{}"'.format(encrypted_link))
+
+        subst_chars = cls.download_link_sub_re.search(page_content)
 
         if subst_chars is None:
             return None
 
-        decoded = base64.b64decode(
-            encrypted_link[1].replace(
-                subst_chars[1], subst_chars[2])).decode('utf-8')
-        def subst_chars(s, sub):
-            return ''.join(list(map(lambda c: sub.get(c, c), s)))
+        if debug:
+            print('substitution characters:   "{}":"{}"'.format(
+                subst_chars[1], subst_chars[2]))
+
+        substituted_link = encrypted_link.replace(
+            subst_chars[1], subst_chars[2])
+
+        if debug:
+            print('substituted link:          "{}"'.format(substituted_link))
+
+        decoded = base64.b64decode(substituted_link).decode('ascii')
+
+        if debug:
+            print('decoded link:              "{}"'.format(decoded))
 
         return decoded
 
@@ -317,6 +333,10 @@ def main():
         'property with name of anime. More properties are supported and their '
         'correspond with this programs\' options.')
 
+    argp.add_argument(
+        '--test', dest='test',
+        help='Development option for testing.')
+
     argp.epilog = """
 AnimeHeaven.eu has relatively low daily request limit.
 You can bypass this limit by using proxy server.
@@ -327,7 +347,10 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
     signal.signal(signal.SIGTERM, raise_signal)
 
     try:
-        if args.config:
+        if args.test:
+            with open(args.test) as page_file:
+                AnimeHeaven.get_download_link(page_file.read(), debug=True)
+        elif args.config:
             if not os.path.exists(args.config):
                 argp.error(
                     'Specification file "{}" does not exist.'.format(
