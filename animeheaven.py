@@ -16,6 +16,7 @@ import requests
 import shutil
 import signal
 import sys
+import time
 import tqdm
 
 
@@ -242,6 +243,15 @@ def progress_bar(response, initial=0):
             yield chunk
 
 
+def abuse_protection_timeout(timeout):
+    print("Abuse protection triggered: waiting {} seconds".format(timeout))
+    with tqdm.tqdm(
+            total=timeout, initial=0, unit='s', dynamic_ncols=True) as progress:
+        for sec in range(timeout):
+            time.sleep(1)
+            progress.update(1)
+
+
 def download(anime, episode, naming_scheme, dest_dir):
     log_entry = "{} - {:03d}".format(anime, episode)
     basename = naming_scheme.format(name=anime, episode=episode)
@@ -257,43 +267,50 @@ def download(anime, episode, naming_scheme, dest_dir):
         return DownloadState.ASSIGNED_OR_DONE
 
     remove_lock = True
+    retry_timeouts = [60, 15, 10, 5]
 
-    try:
-        with temp_lock:
-            info = AnimeHeaven.get_episode(anime, episode)
+    for retry_timeout in retry_timeouts:
+        if retry_timeout > 0:
+            abuse_protection_timeout(retry_timeout)
+        try:
+            with temp_lock:
+                info = AnimeHeaven.get_episode(anime, episode)
 
-            headers = {}
-            fsize = 0
-            if temp_file.exists():
-                fsize = temp_file.stat().st_size
-                headers['Range'] = f'bytes={fsize}-'
+                headers = {}
+                fsize = 0
+                if temp_file.exists():
+                    fsize = temp_file.stat().st_size
+                    headers['Range'] = f'bytes={fsize}-'
 
-            response = session.get(info['source'], stream=True, headers=headers)
-            response.raise_for_status()
+                response = session.get(
+                    info['source'], stream=True, headers=headers)
+                response.raise_for_status()
 
-            mode = 'ab' if response.status_code == 206 else 'wb'
+                mode = 'ab' if response.status_code == 206 else 'wb'
 
-            with open(temp_file, mode) as output:
-                if response.status_code == 206:
-                    print("{}: Resuming".format(log_entry))
-                else:
-                    print("{}: Downloading".format(log_entry))
-                    fsize = 0
-                for chunk in progress_bar(response, fsize):
-                    output.write(chunk)
+                with open(temp_file, mode) as output:
+                    if response.status_code == 206:
+                        print("{}: Resuming".format(log_entry))
+                    else:
+                        print("{}: Downloading".format(log_entry))
+                        fsize = 0
+                    for chunk in progress_bar(response, fsize):
+                        output.write(chunk)
 
-            shutil.move(temp_file, dest_file)
+                shutil.move(temp_file, dest_file)
 
-            return DownloadState.DOWNLOADED
-    except filelock.Timeout:
-        remove_lock = False
-    except KeyboardInterrupt:
-        print("{}: Download canceled".format(log_entry))
-        # Keep the file to be able to resume.
-        raise
-    finally:
-        if remove_lock and os.path.exists(temp_lock.lock_file):
-            os.remove(temp_lock.lock_file)
+                return DownloadState.DOWNLOADED
+        except filelock.Timeout:
+            remove_lock = False
+        except AbuseProtection:
+            continue
+        except KeyboardInterrupt:
+            print("{}: Download canceled".format(log_entry))
+            # Keep the file to be able to resume.
+            raise
+        finally:
+            if remove_lock and os.path.exists(temp_lock.lock_file):
+                os.remove(temp_lock.lock_file)
 
     return DownloadState.FAILED
 
