@@ -51,8 +51,8 @@ class AnimeHeaven:
     anime_url = 'http://animeheaven.eu/i.php'  # a=<anime name>
     search_url = 'http://animeheaven.eu/search.php'  # q=<search query>
     watch_url = 'http://animeheaven.eu/watch.php'  # a=<anime name>&e=<episode>
-    download_link_re = re.compile(r'var plo="([^\"]+)";')
-    download_link_sub_re = re.compile(r'plo=plo\.replace\(/\\?(.)/g,"(.)"\);')
+    download_link_re = re.compile(r'\bplr="([^\"]+)";')
+    download_link_sub_re = re.compile(r'plr=plr\.replace\(/\\?(.)/g,"(.)"\);')
     download_limit_re = re.compile(r'abuse protection')
 
     @classmethod
@@ -137,6 +137,8 @@ class AnimeHeaven:
         escaped_link = cls.download_link_re.search(page_content)
 
         if escaped_link is None:
+            if debug:
+                print('link not found')
             return None
 
         if debug:
