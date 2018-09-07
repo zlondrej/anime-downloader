@@ -267,7 +267,7 @@ def download(anime, episode, naming_scheme, dest_dir):
         return DownloadState.ASSIGNED_OR_DONE
 
     remove_lock = True
-    retry_timeouts = [60, 15, 10, 5]
+    retry_timeouts = [0, 60, 15, 10, 5]
 
     for retry_timeout in retry_timeouts:
         if retry_timeout > 0:
