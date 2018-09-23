@@ -52,8 +52,8 @@ class AnimeHeaven:
     anime_url = 'http://animeheaven.eu/i.php'  # a=<anime name>
     search_url = 'http://animeheaven.eu/search.php'  # q=<search query>
     watch_url = 'http://animeheaven.eu/watch.php'  # a=<anime name>&e=<episode>
-    download_link_re = re.compile(r'\bpktl="([^\"]+)";')
-    download_link_sub_re = re.compile(r'pktl=pktl\.replace\(/\\?(.)/g,"(.)"\);')
+    download_link_re = re.compile(r'\blerbfi="([^\"]+)";')
+    download_link_sub_re = re.compile(r'lerbfi=lerbfi\.replace\(/\\?(.)/g,"(.)"\);')
     download_limit_re = re.compile(r'abuse protection')
 
     @classmethod
