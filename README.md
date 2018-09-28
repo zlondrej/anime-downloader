@@ -9,6 +9,13 @@
 pip3 install --requirement requirements.txt
 ```
 
+## Updates
+
+I'm usually watching anime on thursdays/fridays so update frequency will be probably once a week.
+
+If you find a bug or that script is outdated due to changes on http://animeheaven.eu site,
+don't hesitate to open an issue.
+
 ## AnimeHeaven.eu
 
 For usage use `./animeheaven.py --help`.

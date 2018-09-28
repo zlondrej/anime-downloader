@@ -52,8 +52,6 @@ class AnimeHeaven:
     anime_url = 'http://animeheaven.eu/i.php'  # a=<anime name>
     search_url = 'http://animeheaven.eu/search.php'  # q=<search query>
     watch_url = 'http://animeheaven.eu/watch.php'  # a=<anime name>&e=<episode>
-    download_link_re = re.compile(r'\blerbfi="([^\"]+)";')
-    download_link_sub_re = re.compile(r'lerbfi=lerbfi\.replace\(/\\?(.)/g,"(.)"\);')
     download_limit_re = re.compile(r'abuse protection')
 
     @classmethod
@@ -68,7 +66,8 @@ class AnimeHeaven:
                 'name': anime_name,
             }
 
-        response = session.get(cls.search_url, params={'q': search}, headers=headers)
+        response = session.get(
+            cls.search_url, params={'q': search}, headers=headers)
         response.raise_for_status()
 
         return map(
@@ -94,7 +93,8 @@ class AnimeHeaven:
 
     @classmethod
     def _get_info_strict(cls, anime_name):
-        response = session.get(cls.anime_url, params={'a': anime_name}, headers=headers)
+        response = session.get(
+            cls.anime_url, params={'a': anime_name}, headers=headers)
         response.raise_for_status()
 
         episodes = lxml.html.fromstring(response.text).xpath(
@@ -133,27 +133,70 @@ class AnimeHeaven:
             'source': download_link,
         }
 
+    @staticmethod
+    def _decrypt(key, cipher):
+        block_256 = { i: i for i in range(256) }
+        decrypted = ''
+
+        j = 0
+        key_length = len(key)
+        for i in range(256):
+            j = (j + block_256[i] + ord(key[(i % key_length)])) % 256
+            k = block_256[i]
+            block_256[i] = block_256[j]
+            block_256[j] = k
+
+        j = 0
+        k = 0
+        cipher_length = len(cipher)
+        for i in range(cipher_length):
+            j = (j + 1) % 256
+            k = (k + block_256[j]) % 256
+            l = block_256[j]
+            block_256[j] = block_256[k]
+            block_256[k] = l
+            decrypted += chr(
+                cipher[i] ^ block_256[(block_256[j] + block_256[k]) % 256])
+        return decrypted
+
+
     @classmethod
     def get_download_link(cls, page_content, debug=False):
-        escaped_link = cls.download_link_re.search(page_content)
+        match = re.search(
+            r'href=\'"\+ (\w+) \+"\'><div class=\'dl2\'>', page_content)
 
-        if escaped_link is None:
+        if match is None:
             if debug:
-                print('link not found')
+                print('variable name not found')
             return None
 
+        var_name = match[1]
         if debug:
-            print('escaped link:              "{}"'.format(escaped_link[1]))
+            print('variable name:             "{}"'.format(var_name))
 
-        encrypted_link = (
-            codecs.escape_decode(escaped_link[1])[0].decode('ascii'))
+        match = re.search(rf'\b{var_name}="([^\"]+)";', page_content)
+
+        if match is None:
+            if debug:
+                print('link string not found')
+            return None
+
+        escaped_link = match[1]
+        if debug:
+            print('escaped link:              "{}"'.format(escaped_link))
+
+        encrypted_link = codecs.decode(escaped_link, 'unicode_escape')
 
         if debug:
             print('encrypted link:            "{}"'.format(encrypted_link))
 
-        subst_chars = cls.download_link_sub_re.search(page_content)
+        subst_chars = re.search(
+            rf'{var_name}={var_name}\.replace\(/\\?(.)/g,"(.)"\);',
+            page_content)
 
         if subst_chars is None:
+            if debug:
+                print('substitution characters not found')
             return None
 
         if debug:
@@ -166,12 +209,14 @@ class AnimeHeaven:
         if debug:
             print('substituted link:          "{}"'.format(substituted_link))
 
-        decoded = base64.b64decode(substituted_link).decode('ascii')
+        cipher = base64.b64decode(substituted_link)
+
+        decrypted = cls._decrypt('kert', cipher)
 
         if debug:
-            print('decoded link:              "{}"'.format(decoded))
+            print('decrypted link:              "{}"'.format(decrypted))
 
-        return decoded
+        return decrypted
 
 
 class Range:
@@ -423,11 +468,10 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
                 ))
 
     except UpdateNecessaryError:
-        argp.exit(3, "Script update may be neccessary\n")
-    except AbuseProtection:
         argp.exit(2,
-            'You have triggered abuse protection. '
-            'Wait 60 seconds before continuing.\n')
+            'Script update may be neccessary due changes on site.\n'
+            'Feel free to open an issue on '
+            'https://github.com/JOndra91/anime-downloader\n')
     except KeyboardInterrupt:
         pass
 
