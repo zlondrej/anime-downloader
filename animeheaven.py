@@ -312,7 +312,8 @@ def download(anime, episode, naming_scheme, dest_dir):
         return DownloadState.ASSIGNED_OR_DONE
 
     remove_lock = True
-    retry_timeouts = [0, 60, 15, 10, 5]
+    # Retry with total possible timeout up to 10 minutes
+    retry_timeouts = itertools.chain([0, 90], [30] * 7, [150, 150])
 
     for retry_timeout in retry_timeouts:
         if retry_timeout > 0:
@@ -402,8 +403,8 @@ def main():
         help='Development option for testing.')
 
     argp.epilog = """
-AnimeHeaven.eu has relatively low daily request limit.
-You can bypass this limit by using proxy server.
+AnimeHeaven.eu has relatively agressive abuse protection.
+You can bypass this protection by using proxy server.
 To use proxy server, just export `HTTP_PROXY` environment variable.
 """
 
@@ -459,6 +460,11 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
 
                         if state is DownloadState.DOWNLOADED:
                             break
+
+                        if state is DownloadState.FAILED:
+                            argp.exit(1,
+                                'Abuse protection wasn\'t lifted in '
+                                '10 minutest. Aborting download.\n')
         else:
             animes = AnimeHeaven.search_anime(args.anime)
             for anime in animes:
