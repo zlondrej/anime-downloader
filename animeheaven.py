@@ -211,10 +211,13 @@ class AnimeHeaven:
 
         cipher = base64.b64decode(substituted_link)
 
-        decrypted = cls._decrypt('kert', cipher)
+        decrypted = cls._decrypt('shdfhi', cipher)
 
         if debug:
             print('decrypted link:              "{}"'.format(decrypted))
+
+        if not decrypted.startswith('http'):
+            return None
 
         return decrypted
 
