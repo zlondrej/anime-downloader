@@ -18,6 +18,7 @@ import signal
 import sys
 import time
 import tqdm
+import urllib
 
 
 session = requests.Session()
@@ -133,15 +134,20 @@ class AnimeHeaven:
             'source': download_link,
         }
 
+    @classmethod
+    def _decrypt_key(cls, key, cipher):
+        recoded_cipher = cipher.decode('utf-8').encode('iso-8859-1')
+        return cls._decrypt(key, recoded_cipher)
+
     @staticmethod
     def _decrypt(key, cipher):
         block_256 = { i: i for i in range(256) }
-        decrypted = ''
+        decrypted = []
 
         j = 0
         key_length = len(key)
         for i in range(256):
-            j = (j + block_256[i] + ord(key[(i % key_length)])) % 256
+            j = (j + block_256[i] + key[(i % key_length)]) % 256
             k = block_256[i]
             block_256[i] = block_256[j]
             block_256[j] = k
@@ -155,13 +161,44 @@ class AnimeHeaven:
             l = block_256[j]
             block_256[j] = block_256[k]
             block_256[k] = l
-            decrypted += chr(
+            decrypted.append(
                 cipher[i] ^ block_256[(block_256[j] + block_256[k]) % 256])
-        return decrypted
+        return bytes(decrypted).decode('utf-8')
 
 
     @classmethod
     def get_download_link(cls, page_content, debug=False):
+        match = re.search(
+            r'var _0x[0-9a-f]+ ?= ?\[((?:\'.*?\',?)+)\];', page_content)
+
+        if match is None:
+            if debug:
+                print('key list not found')
+            return None
+
+        key_list = list((map(lambda key: key[1:-1], (match[1].split(',')))))
+
+        if debug:
+            print('key list:              {}'.format(key_list))
+
+        match = re.search(r'_0x[0-9a-f]+\(\'0x5\',\'(.*?)\'\)', page_content)
+
+        if match is None:
+            if debug:
+                print('link key key not found')
+            return None
+
+        link_key_key = match[1]
+
+        if debug:
+            print('link key key:         "{}"'.format(link_key_key))
+
+        link_key = cls._decrypt_key(
+            link_key_key.encode('utf-8'), base64.b64decode(key_list[5]))
+
+        if debug:
+            print('link key:             "{}"'.format(link_key))
+
         match = re.search(
             r'href=\'"\+ (\w+) \+"\'><div class=\'dl2\'>', page_content)
 
@@ -211,7 +248,7 @@ class AnimeHeaven:
 
         cipher = base64.b64decode(substituted_link)
 
-        decrypted = cls._decrypt('shdfhi', cipher)
+        decrypted = cls._decrypt(link_key.encode('utf-8'), cipher)
 
         if debug:
             print('decrypted link:              "{}"'.format(decrypted))
