@@ -2,6 +2,7 @@
 
 - python3
 - pip for python3
+- Chrome/Chromium browser with Selenium driver
 
 ## Python requirements
 

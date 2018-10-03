@@ -2,4 +2,5 @@ cssselect==1.0.1
 filelock==2.0.13
 lxml==4.1.1
 requests==2.18.4
+selenium>=3.14.1
 tqdm==4.19.4

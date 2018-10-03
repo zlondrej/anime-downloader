@@ -18,7 +18,11 @@ import signal
 import sys
 import time
 import tqdm
+import traceback
 import urllib
+
+from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException
 
 
 session = requests.Session()
@@ -53,7 +57,10 @@ class AnimeHeaven:
     anime_url = 'http://animeheaven.eu/i.php'  # a=<anime name>
     search_url = 'http://animeheaven.eu/search.php'  # q=<search query>
     watch_url = 'http://animeheaven.eu/watch.php'  # a=<anime name>&e=<episode>
-    download_limit_re = re.compile(r'abuse protection')
+
+    headless_webdriver = True
+    interactive_console = False
+
 
     @classmethod
     def search_anime(cls, search):
@@ -113,150 +120,62 @@ class AnimeHeaven:
             'a': anime_name,
             'e': episode,
         }
-        response = session.get(cls.watch_url, params=params, cookies={
-            'popfired': '2',
-            '_popfired': '1',
-            'pp': 'c'
-        })
-        response.raise_for_status()
 
-        if cls.download_limit_re.search(response.text):
-            raise AbuseProtection
+        episode_url = '{}?{}'.format(
+            cls.watch_url, urllib.parse.urlencode(params))
 
-        download_link = cls.get_download_link(response.text)
+        browser = None
+        try:
+            try:
+                browser = cls._init_browser()
+                browser.get(episode_url)
+                # Expand burger menu so we can get 'Random' link.
+                # Alternative would be to use larger browser window,
+                # but I think it's better this way for development.
+                browser.find_element_by_id('burgeri').click()
+                random_element = browser.find_element_by_link_text('Random')
+                dl_element = browser.find_element_by_link_text('Force Download')
+                download_link = dl_element.get_attribute('href')
+                # Let's click on the link so they can be happy from firing up
+                # theirs agressive advertisement popups.
+                random_element.click()
 
-        if download_link is None:
-            raise UpdateNecessaryError
-
-        return {
-            'name': anime_name,
-            'episode': int(episode),
-            'source': download_link,
-        }
-
-    @classmethod
-    def _decrypt_key(cls, key, cipher):
-        recoded_cipher = cipher.decode('utf-8').encode('iso-8859-1')
-        return cls._decrypt(key, recoded_cipher)
-
-    @staticmethod
-    def _decrypt(key, cipher):
-        block_256 = { i: i for i in range(256) }
-        decrypted = []
-
-        j = 0
-        key_length = len(key)
-        for i in range(256):
-            j = (j + block_256[i] + key[(i % key_length)]) % 256
-            k = block_256[i]
-            block_256[i] = block_256[j]
-            block_256[j] = k
-
-        j = 0
-        k = 0
-        cipher_length = len(cipher)
-        for i in range(cipher_length):
-            j = (j + 1) % 256
-            k = (k + block_256[j]) % 256
-            l = block_256[j]
-            block_256[j] = block_256[k]
-            block_256[k] = l
-            decrypted.append(
-                cipher[i] ^ block_256[(block_256[j] + block_256[k]) % 256])
-        return bytes(decrypted).decode('utf-8')
-
+                return {
+                    'name': anime_name,
+                    'episode': int(episode),
+                    'source': download_link,
+                }
+            except NoSuchElementException as no_such_element_exception:
+                if 'abuse protection' in browser.page_source:
+                    raise AbuseProtection
+                raise UpdateNecessaryError
+        except AbuseProtection:
+            raise  # No interactive mode when abuse procection is detected.
+        except Exception as exception:
+            try:
+                if cls.interactive_console:
+                    from IPython import embed
+                    traceback.print_exc()
+                    embed()
+            finally:
+                raise exception
+        finally:
+            if browser is not None:
+                browser.quit()
 
     @classmethod
-    def get_download_link(cls, page_content, debug=False):
-        match = re.search(
-            r'var _0x[0-9a-f]+ ?= ?\[((?:\'.*?\',?)+)\];', page_content)
+    def _init_browser(cls):
+        driver_options = webdriver.ChromeOptions()
+        driver_options.add_argument('--incognito')
+        driver_options.headless = cls.headless_webdriver
 
-        if match is None:
-            if debug:
-                print('key list not found')
-            return None
+        browser = webdriver.Chrome(options=driver_options)
+        browser.implicitly_wait(5)
+        browser.get(cls.base_url)
+        browser.add_cookie({'name': '_popfired', 'value': '1'})
+        browser.add_cookie({'name': 'pp', 'value': 'c'})
 
-        key_list = list((map(lambda key: key[1:-1], (match[1].split(',')))))
-
-        if debug:
-            print('key list:              {}'.format(key_list))
-
-        match = re.search(r'_0x[0-9a-f]+\(\'0x5\',\'(.*?)\'\)', page_content)
-
-        if match is None:
-            if debug:
-                print('link key key not found')
-            return None
-
-        link_key_key = match[1]
-
-        if debug:
-            print('link key key:         "{}"'.format(link_key_key))
-
-        link_key = cls._decrypt_key(
-            link_key_key.encode('utf-8'), base64.b64decode(key_list[5]))
-
-        if debug:
-            print('link key:             "{}"'.format(link_key))
-
-        match = re.search(
-            r'href=\'"\+ (\w+) \+"\'><div class=\'dl2\'>', page_content)
-
-        if match is None:
-            if debug:
-                print('variable name not found')
-            return None
-
-        var_name = match[1]
-        if debug:
-            print('variable name:             "{}"'.format(var_name))
-
-        match = re.search(rf'\b{var_name}="([^\"]+)";', page_content)
-
-        if match is None:
-            if debug:
-                print('link string not found')
-            return None
-
-        escaped_link = match[1]
-        if debug:
-            print('escaped link:              "{}"'.format(escaped_link))
-
-        encrypted_link = codecs.decode(escaped_link, 'unicode_escape')
-
-        if debug:
-            print('encrypted link:            "{}"'.format(encrypted_link))
-
-        subst_chars = re.search(
-            rf'{var_name}={var_name}\.replace\(/\\?(.)/g,"(.)"\);',
-            page_content)
-
-        if subst_chars is None:
-            if debug:
-                print('substitution characters not found')
-            return None
-
-        if debug:
-            print('substitution characters:   "{}":"{}"'.format(
-                subst_chars[1], subst_chars[2]))
-
-        substituted_link = encrypted_link.replace(
-            subst_chars[1], subst_chars[2])
-
-        if debug:
-            print('substituted link:          "{}"'.format(substituted_link))
-
-        cipher = base64.b64decode(substituted_link)
-
-        decrypted = cls._decrypt(link_key.encode('utf-8'), cipher)
-
-        if debug:
-            print('decrypted link:              "{}"'.format(decrypted))
-
-        if not decrypted.startswith('http'):
-            return None
-
-        return decrypted
+        return browser
 
 
 class Range:
@@ -353,7 +272,7 @@ def download(anime, episode, naming_scheme, dest_dir):
 
     remove_lock = True
     # Retry with total possible timeout up to 10 minutes
-    retry_timeouts = itertools.chain([0, 90], [30] * 7, [150, 150])
+    retry_timeouts = [0, 90, 30, 90, 150, 150]
 
     for retry_timeout in retry_timeouts:
         if retry_timeout > 0:
@@ -439,8 +358,10 @@ def main():
         'correspond with this programs\' options.')
 
     argp.add_argument(
-        '--test', dest='test',
-        help='Development option for testing.')
+        '--dev-mode', dest='dev_mode', action='store_true',
+        help='Development option for testing. Disables headless WebDriver and '
+        'open\'s up interactive terminal WebDriver fails to extract link from '
+        'the page.')
 
     argp.epilog = """
 AnimeHeaven.eu has relatively agressive abuse protection.
@@ -451,11 +372,12 @@ To use proxy server, just export `HTTP_PROXY` environment variable.
     args = argp.parse_args()
     signal.signal(signal.SIGTERM, raise_signal)
 
+    if args.dev_mode:
+        AnimeHeaven.interactive_console = True
+        AnimeHeaven.headless_webdriver = False
+
     try:
-        if args.test:
-            with open(args.test) as page_file:
-                AnimeHeaven.get_download_link(page_file.read(), debug=True)
-        elif args.config:
+        if args.config:
             if not os.path.exists(args.config):
                 argp.error(
                     'Specification file "{}" does not exist.'.format(
