@@ -129,16 +129,28 @@ class AnimeHeaven:
             try:
                 browser = cls._init_browser()
                 browser.get(episode_url)
-                # Expand burger menu so we can get 'Random' link.
-                # Alternative would be to use larger browser window,
-                # but I think it's better this way for development.
-                browser.find_element_by_id('burgeri').click()
-                random_element = browser.find_element_by_link_text('Random')
                 dl_element = browser.find_element_by_link_text('Force Download')
                 download_link = dl_element.get_attribute('href')
-                # Let's click on the link so they can be happy from firing up
-                # theirs agressive advertisement popups.
-                random_element.click()
+
+                try:
+                    # This whole section is just for purpose of triggering
+                    # AnimeHeaven's agressive ad popups so the they won't
+                    # have a reason to fight against script users so hard.
+                    # But there will be no clicking unless we have download
+                    # link already.
+
+                    # Expand burger menu so we can get 'Random' link.
+                    # Alternative would be to use larger browser window,
+                    # but I think it's better this way for development.
+                    browser.find_element_by_id('burgeri').click()
+                    random_element = browser.find_element_by_link_text('Random')
+                    # Let's click the link so they can be happy from theirs
+                    # agressive advertisement popups opening.
+                    random_element.click()
+                except Exception:
+                    # We have the download link so we don't really care
+                    # about this failing (probably due to popups anyway).
+                    pass
 
                 return {
                     'name': anime_name,
